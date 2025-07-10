@@ -7,11 +7,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const issuesList = document.getElementById('issues-list');
     const startScreen = document.getElementById('start-screen');
     const startBtn = document.getElementById('start-btn');
+    const countdownEl = document.getElementById('countdown');
 
     // Game settings
     const LANE_COUNT = 4;
     const SPAWN_INTERVAL = 3500; // ms
     const FALL_SPEED = 1; // pixels per frame
+    const BONUS_CHANCE = 0.2; // 20% chance for a bonus clue
 
     // Game state
     let score = 0;
@@ -20,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let upcomingIssuesQueue = [];
     let lanes = [];
     let gameLoopInterval;
-    let animationFrameId;
 
     const categories = {
         'bug': { name: 'Bugs' },
@@ -36,15 +37,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function makeDraggable(element) {
         element.addEventListener('mousedown', e => {
+            if (e.button !== 0) return; // Only allow left-click drags
             draggedItem = element;
             draggedItem.classList.add('dragging');
             
-            // Calculate offset from the element's top-left corner
             const rect = draggedItem.getBoundingClientRect();
             offsetX = e.clientX - rect.left;
             offsetY = e.clientY - rect.top;
 
-            // Stop the falling animation
             cancelAnimationFrame(draggedItem.animationFrameId);
 
             document.addEventListener('mousemove', onMouseMove);
@@ -77,10 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        if (!droppedInBin) {
-            // If not dropped in a bin, resume falling
-            resumeFalling(draggedItem);
-        }
+        if (!droppedInBin) resumeFalling(draggedItem);
         draggedItem = null;
     }
 
@@ -115,14 +112,33 @@ document.addEventListener('DOMContentLoaded', () => {
         createBins();
         updateSidebar();
         
-        gameLoopInterval = setInterval(spawnIssue, SPAWN_INTERVAL);
+        runCountdown();
+    }
+
+    function runCountdown() {
+        let count = 3;
+        countdownEl.textContent = count;
+        const countdownInterval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownEl.textContent = count;
+            } else if (count === 0) {
+                countdownEl.textContent = 'GO!';
+            } else {
+                clearInterval(countdownInterval);
+                countdownEl.textContent = '';
+                // Spawn the first issue immediately, then start the loop
+                spawnIssue();
+                gameLoopInterval = setInterval(spawnIssue, SPAWN_INTERVAL);
+            }
+        }, 1000);
     }
 
     function setupLanes() {
         lanes = [];
         const laneWidth = gameArea.offsetWidth / LANE_COUNT;
         for (let i = 0; i < LANE_COUNT; i++) {
-            lanes.push(i * laneWidth);
+            lanes.push(i * laneWidth + (laneWidth / 2) - 125); // Center of lane
         }
     }
 
@@ -145,6 +161,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const x = lanes[laneIndex];
         issueCard.style.transform = `translate(${x}px, -100px)`;
         
+        // Bonus Clue Logic
+        if (Math.random() < BONUS_CHANCE) {
+            issueCard.classList.add('bonus');
+            const clue = document.createElement('div');
+            clue.className = 'clue';
+            clue.textContent = categories[issueCategory].name;
+            issueCard.appendChild(clue);
+        }
+        
         makeDraggable(issueCard);
         gameArea.appendChild(issueCard);
         
@@ -153,9 +178,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function fall(element) {
         let y = -100;
+        const x = parseFloat(element.style.transform.match(/translate\((.+)px,/)[1]);
         function animate() {
             y += FALL_SPEED;
-            const x = parseFloat(element.style.transform.match(/translate\((.+)px,/)[1]);
             element.style.transform = `translate(${x}px, ${y}px)`;
 
             if (y > gameArea.offsetHeight) {
@@ -173,10 +198,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function resumeFalling(element) {
         const currentTransform = new WebKitCSSMatrix(window.getComputedStyle(element).transform);
         let y = currentTransform.m42;
+        const x = currentTransform.m41;
         
         function animate() {
             y += FALL_SPEED;
-            const x = currentTransform.m41;
             element.style.transform = `translate(${x}px, ${y}px)`;
 
             if (y > gameArea.offsetHeight) {
@@ -193,7 +218,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function endGame(isWin) {
         clearInterval(gameLoopInterval);
-        document.querySelectorAll('.issue-card').forEach(card => card.remove());
+        document.querySelectorAll('.issue-card').forEach(card => {
+            cancelAnimationFrame(card.animationFrameId);
+            card.remove();
+        });
 
         const title = startScreen.querySelector('h1');
         const p = startScreen.querySelector('p');
