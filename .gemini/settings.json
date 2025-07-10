@@ -1,0 +1,14 @@
+{
+  "theme": "Shades Of Purple",
+  "mcpServers": {
+    "github": {
+      "httpUrl": "https://api.githubcopilot.com/mcp/",
+      "authorization_token": "Bearer $GITHUB_PAT",
+      "timeout": 5000,
+      "headers": {
+        "Authorization": "Bearer $GITHUB_PAT",
+        "Content-Type": "application/json"
+      }
+    }
+  }
+}
