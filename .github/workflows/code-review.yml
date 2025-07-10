@@ -28,7 +28,7 @@ jobs:
             1. Get the pull request number by running: `echo ${{ github.event.pull_request.number }}`
             2. Get the full diff by running: `gh pr diff ${{ github.event.pull_request.number }}`
             3. Get the list of changed files by running: `gh pr diff ${{ github.event.pull_request.number }} --name-only`
-            4. For any specific file, you can read its contents with `cat` (e.g., `cat path/to/file.js`).
+            4. For any specific file, you can read its contents, for example: `cat "path/to/file.js"`
 
             **Review Guidelines:**
             - After gathering information, provide a thorough review.
@@ -45,7 +45,7 @@ jobs:
 
             ### 💡 Suggestions
             *(Specific suggestions for improvement, including code snippets if helpful.)*
-            - **File: `path/to/file.js:line`** - Your detailed suggestion.
+            - **File:** `path/to/file.js:line` - Your detailed suggestion.
 
             ### ✨ Highlights
             *(Point out things you liked about the PR!)*
@@ -90,6 +90,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [[ "${{ steps.gemini_review.outputs.review }}" != "This looks great! No suggestions." ]]; then
+          if ! grep -q "This looks great! No suggestions." <<< "${{ steps.gemini_review.outputs.review }}"; then
             gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.gemini_review.outputs.review }}"
           fi
