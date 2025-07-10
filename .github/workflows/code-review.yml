@@ -6,6 +6,8 @@ on:
 
 permissions:
   pull-requests: write
+  actions: read
+  contents: read
 
 jobs:
   review:
@@ -83,7 +85,13 @@ jobs:
           
           # Pipe the prompt to the gemini command
           printf "%s" "${{ steps.create_prompt.outputs.prompt }}" | gemini -p - > review.md
-          
+
+      - name: Upload Review Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: review
+          path: review.md
+
       - name: Post Review Comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
