@@ -28,7 +28,7 @@ jobs:
             1. Get the pull request number by running: `echo ${{ github.event.pull_request.number }}`
             2. Get the full diff by running: `gh pr diff ${{ github.event.pull_request.number }}`
             3. Get the list of changed files by running: `gh pr diff ${{ github.event.pull_request.number }} --name-only`
-            4. For any specific file, you can read its contents with `cat <filename>`.
+            4. For any specific file, you can read its contents with `cat` (e.g., `cat path/to/file.js`).
 
             **Review Guidelines:**
             - After gathering information, provide a thorough review.
@@ -58,15 +58,9 @@ jobs:
           echo "${REVIEW_PROMPT}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Run Gemini CLI for Review
-        id: gemini_review
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Temporary Settings
         run: |
-          npm install -g @google/gemini-cli
-          
-          SETTINGS_JSON='{
+          echo '{
             "coreTools": [
               "run_shell_command(echo)",
               "run_shell_command(gh pr diff)",
@@ -76,9 +70,17 @@ jobs:
               "run_shell_command(grep)"
             ],
             "telemetry": {"enabled": false}
-          }'
+          }' > workflow-settings.json
+
+      - name: Run Gemini CLI for Review
+        id: gemini_review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm install -g @google/gemini-cli
           
-          REVIEW=$(gemini -p "${{ steps.create_prompt.outputs.prompt }}" --settings-json "${SETTINGS_JSON}")
+          REVIEW=$(gemini -p "${{ steps.create_prompt.outputs.prompt }}" --settings workflow-settings.json)
           
           echo "review<<EOF" >> $GITHUB_OUTPUT
           echo "$REVIEW" >> $GITHUB_OUTPUT
