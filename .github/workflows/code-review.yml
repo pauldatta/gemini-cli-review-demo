@@ -20,6 +20,8 @@ jobs:
 
       - name: Create Context Packet
         id: context_packet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get the diff
           DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
@@ -57,12 +59,7 @@ jobs:
           REVIEW_PROMPT: |
             You are an expert code reviewer. Your task is to provide a detailed review of this pull request.
 
-            **IMPORTANT:** You have been provided with a complete "context packet" that includes both the pull request diff and the full content of every changed file.
-
-            **Your Task:**
-            1. **Review the provided context.**
-            2. **If necessary, use your available tools (`cat`, `grep`, etc.) to explore other parts of the codebase for a more thorough review.**
-            3. Provide your feedback in the specified format.
+            **IMPORTANT:** You have been provided with a complete "context packet" that includes both the pull request diff and the full content of every changed file. Rely *only* on this context to perform your review.
 
             **Review Guidelines:**
             - Focus on code quality, security, performance, and maintainability.
@@ -97,13 +94,14 @@ jobs:
         id: gemini_review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create the .gemini directory
+          # Create the .gemini directory if it doesn't exist
           mkdir -p .gemini
 
-          # Temporarily create the settings file with the correct format
-          echo '{"telemetry": {"enabled": false}}' > .gemini/settings.json
+          # Temporarily create the settings file to disable telemetry
+          echo '{
+            "telemetry": {"enabled": false}
+          }' > .gemini/settings.json
 
           npm install -g @google/gemini-cli
           
