@@ -16,33 +16,43 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get PR Diff
-        id: get_diff
-        run: |
-          DIFF=$(git diff "origin/${{ github.base_ref }}...origin/${{ github.head_ref }}")
-          echo "diff<<EOF" >> $GITHUB_OUTPUT
-          echo "$DIFF" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Create Review Prompt
         id: create_prompt
         env:
           REVIEW_PROMPT: |
-            You are an expert code reviewer, known for your constructive and insightful feedback.
-            You are reviewing a pull request. Please analyze the following code changes and provide your feedback.
+            You are an expert code reviewer and an autonomous agent. Your task is to provide a detailed review of this pull request.
 
-            Focus on the following areas:
-            - Best practices and code quality
-            - Potential bugs or security vulnerabilities
-            - Readability and maintainability
-            - Adherence to common style conventions
-            - Completeness of documentation (e.g., comments, docstrings)
+            **IMPORTANT:** You have access to a shell with a curated set of tools. You MUST use these tools to gather information about the pull request. Do not ask for the information to be provided.
 
-            Structure your feedback as a list of suggestions. For each suggestion, include the file path and the relevant line numbers. Use markdown formatting.
+            **Your First Steps:**
+            1. Get the pull request number by running: `echo ${{ github.event.pull_request.number }}`
+            2. Get the full diff by running: `gh pr diff ${{ github.event.pull_request.number }}`
+            3. Get the list of changed files by running: `gh pr diff ${{ github.event.pull_request.number }} --name-only`
+            4. For any specific file, you can read its contents with `cat <filename>`.
 
-            If you have no suggestions or the changes are perfect, respond with the single phrase: "No suggestions."
+            **Review Guidelines:**
+            - After gathering information, provide a thorough review.
+            - Focus on code quality, security, performance, and maintainability.
+            - For this project, also consider the gameplay and user experience.
+            - Provide specific, constructive feedback.
 
-            Here are the code changes:
+            **Output Format:**
+            Please structure your feedback using this exact markdown format. If you have no feedback for a section, omit it.
+
+            ---
+            ### 🎮 Gameplay & UX
+            *(Feedback on the user experience, game feel, and fun factor.)*
+
+            ### 💡 Suggestions
+            *(Specific suggestions for improvement, including code snippets if helpful.)*
+            - **File: `path/to/file.js:line`** - Your detailed suggestion.
+
+            ### ✨ Highlights
+            *(Point out things you liked about the PR!)*
+
+            ---
+
+            If you have no suggestions at all, respond with the single phrase: "This looks great! No suggestions."
         run: |
           echo "prompt<<EOF" >> $GITHUB_OUTPUT
           echo "${REVIEW_PROMPT}" >> $GITHUB_OUTPUT
@@ -52,9 +62,24 @@ jobs:
         id: gemini_review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm install -g @google/gemini-cli
-          REVIEW=$(printf "%s\n\n%s" "${{ steps.create_prompt.outputs.prompt }}" "${{ steps.get_diff.outputs.diff }}" | gemini -p -)
+          
+          SETTINGS_JSON='{
+            "coreTools": [
+              "run_shell_command(echo)",
+              "run_shell_command(gh pr diff)",
+              "run_shell_command(cat)",
+              "run_shell_command(head)",
+              "run_shell_command(tail)",
+              "run_shell_command(grep)"
+            ],
+            "telemetry": {"enabled": false}
+          }'
+          
+          REVIEW=$(gemini -p "${{ steps.create_prompt.outputs.prompt }}" --settings-json "${SETTINGS_JSON}")
+          
           echo "review<<EOF" >> $GITHUB_OUTPUT
           echo "$REVIEW" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -63,6 +88,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [[ "${{ steps.gemini_review.outputs.review }}" != "No suggestions." ]]; then
+          if [[ "${{ steps.gemini_review.outputs.review }}" != "This looks great! No suggestions." ]]; then
             gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.gemini_review.outputs.review }}"
           fi
