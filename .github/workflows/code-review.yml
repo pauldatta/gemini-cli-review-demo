@@ -6,6 +6,8 @@ on:
 
 permissions:
   pull-requests: write
+  actions: read
+  contents: read
 
 jobs:
   review:
@@ -16,22 +18,50 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Create Context Packet
+        id: context_packet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the diff
+          DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
+
+          # Get the list of changed files
+          CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only)
+
+          # Create the context packet
+          CONTEXT_PACKET="
+          ## Pull Request Diff:
+          ```diff
+          ${DIFF}
+          ```
+
+          ## Full Content of Changed Files:
+          "
+
+          for file in ${CHANGED_FILES}; do
+            CONTEXT_PACKET="${CONTEXT_PACKET}
+            ---
+            ### File: ${file}
+            ```
+            $(cat ${file})
+            ```
+            "
+          done
+
+          echo "context<<EOF" >> $GITHUB_OUTPUT
+          echo "${CONTEXT_PACKET}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create Review Prompt
         id: create_prompt
         env:
           REVIEW_PROMPT: |
-            You are an expert code reviewer and an autonomous agent. Your task is to provide a detailed review of this pull request.
+            You are an expert code reviewer. Your task is to provide a detailed review of this pull request.
 
-            **IMPORTANT:** You have access to a shell with a curated set of tools. You MUST use these tools to gather information about the pull request. Do not ask for the information to be provided.
-
-            **Your First Steps:**
-            1. Get the pull request number by running: `echo ${{ github.event.pull_request.number }}`
-            2. Get the full diff by running: `gh pr diff ${{ github.event.pull_request.number }}`
-            3. Get the list of changed files by running: `gh pr diff ${{ github.event.pull_request.number }} --name-only`
-            4. For any specific file, you can read its contents, for example: `cat "path/to/file.js"`
+            **IMPORTANT:** You have been provided with a complete "context packet" that includes both the pull request diff and the full content of every changed file. Rely *only* on this context to perform your review.
 
             **Review Guidelines:**
-            - After gathering information, provide a thorough review.
             - Focus on code quality, security, performance, and maintainability.
             - For this project, also consider the gameplay and user experience.
             - Provide specific, constructive feedback.
@@ -53,35 +83,37 @@ jobs:
             ---
 
             If you have no suggestions at all, respond with the single phrase: "This looks great! No suggestions."
+
+            Here is the context packet:
         run: |
           echo "prompt<<EOF" >> $GITHUB_OUTPUT
           echo "${REVIEW_PROMPT}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create Temporary Settings
-        run: |
-          echo '{
-            "coreTools": [
-              "run_shell_command(echo)",
-              "run_shell_command(gh pr diff)",
-              "run_shell_command(cat)",
-              "run_shell_command(head)",
-              "run_shell_command(tail)",
-              "run_shell_command(grep)"
-            ],
-            "telemetry": {"enabled": false}
-          }' > workflow-settings.json
-
       - name: Run Gemini CLI for Review
         id: gemini_review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Create the .gemini directory
+          mkdir -p .gemini
+
+          # Temporarily create the settings file to disable telemetry
+          echo '{
+            "telemetry": {"enabled": false}
+          }' > .gemini/settings.json
+
           npm install -g @google/gemini-cli
           
-          printf "%s" "${{ steps.create_prompt.outputs.prompt }}" | gemini -p - --settings workflow-settings.json > review.md
-          
+          # Pipe the context and prompt to the gemini command
+          printf "%s\n\n%s" "${{ steps.create_prompt.outputs.prompt }}" "${{ steps.context_packet.outputs.context }}" | gemini > review.md
+
+      - name: Upload Review Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: review
+          path: review.md
+
       - name: Post Review Comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
