@@ -1,0 +1,69 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR Diff
+        id: get_diff
+        run: |
+          DIFF=$(git diff "origin/${{ github.base_ref }}" "origin/${{ github.head_ref }}")
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Review Prompt
+        id: create_prompt
+        run: |
+          PROMPT=$(cat <<'EOF'
+You are an expert code reviewer, known for your constructive and insightful feedback.
+You are reviewing a pull request. Please analyze the following code changes and provide your feedback.
+
+Focus on the following areas:
+- Best practices and code quality
+- Potential bugs or security vulnerabilities
+- Readability and maintainability
+- Adherence to common style conventions
+- Completeness of documentation (e.g., comments, docstrings)
+
+Structure your feedback as a list of suggestions. For each suggestion, include the file path and the relevant line numbers. Use markdown formatting.
+
+If you have no suggestions or the changes are perfect, respond with the single phrase: "No suggestions."
+
+Here are the code changes:
+EOF
+)
+          echo "prompt<<EOF" >> $GITHUB_OUTPUT
+          echo "$PROMPT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run Gemini CLI for Review
+        id: gemini_review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          npm install -g @google/gemini-cli
+          REVIEW=$(printf "%s\n\n%s" "${{ steps.create_prompt.outputs.prompt }}" "${{ steps.get_diff.outputs.diff }}" | gemini -p -)
+          echo "review<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post Review Comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ steps.gemini_review.outputs.review }}" != "No suggestions." ]]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.gemini_review.outputs.review }}"
+          fi
