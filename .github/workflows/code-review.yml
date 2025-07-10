@@ -80,16 +80,12 @@ jobs:
         run: |
           npm install -g @google/gemini-cli
           
-          REVIEW=$(printf "%s" "${{ steps.create_prompt.outputs.prompt }}" | gemini -p - --settings workflow-settings.json)
+          printf "%s" "${{ steps.create_prompt.outputs.prompt }}" | gemini -p - --settings workflow-settings.json > review.md
           
-          echo "review<<EOF" >> $GITHUB_OUTPUT
-          echo "$REVIEW" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Post Review Comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if ! grep -q "This looks great! No suggestions." <<< "${{ steps.gemini_review.outputs.review }}"; then
-            gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.gemini_review.outputs.review }}"
+          if ! grep -q "This looks great! No suggestions." review.md; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file review.md
           fi
