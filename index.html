@@ -3,13 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini-CLI Issue Tracker</title>
+    <title>Gemini-CLI: Issue Triage</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Gemini-CLI Issue Tracker</h1>
-        <div id="issues-container"></div>
+    <div id="game-container">
+        <div id="game-area">
+            <div id="score-board">
+                <span>Score: <span id="score">0</span></span>
+                <span>Lives: <span id="lives">3</span></span>
+            </div>
+            <div id="bins-container">
+                <!-- Bins will be dynamically created here -->
+            </div>
+        </div>
+        <div id="sidebar">
+            <h1>Upcoming Issues</h1>
+            <div id="issues-list"></div>
+            <a href="https://github.com/google-gemini/gemini-cli/issues" target="_blank" class="view-all-link">View All on GitHub</a>
+        </div>
+    </div>
+    <div id="start-screen">
+        <div class="start-content">
+            <h1>Issue Triage</h1>
+            <p>Drag and drop the falling issues into the correct categories to score points. Don't let them fall off the screen!</p>
+            <div id="instructions">
+                <h3>Categories:</h3>
+                <ul>
+                    <li><span class="dot bug"></span><b>Bugs:</b> Issues labeled 'bug'.</li>
+                    <li><span class="dot feature"></span><b>Features:</b> Issues labeled 'enhancement'.</li>
+                    <li><span class="dot docs"></span><b>Docs:</b> Issues labeled 'documentation'.</li>
+                    <li><span class="dot first-issue"></span><b>First Issues:</b> Issues labeled 'good first issue'.</li>
+                    <li><span class="dot other"></span><b>Other:</b> Anything else.</li>
+                </ul>
+            </div>
+            <button id="start-btn">Start Game</button>
+            <a href="https://github.com/google-gemini/gemini-cli/issues" target="_blank" class="view-all-link">View All on GitHub</a>
+        </div>
     </div>
     <script src="script.js"></script>
 </body>
