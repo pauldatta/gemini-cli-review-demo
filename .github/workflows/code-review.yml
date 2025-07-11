@@ -95,7 +95,7 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # Create the .gemini directory
+          # Create the .gemini directory if it doesn't exist
           mkdir -p .gemini
 
           # Temporarily create the settings file to disable telemetry
