@@ -18,6 +18,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check GitHub CLI Version
+        run: gh --version
+          
       - name: Create Context Packet
         id: context_packet
         env:
