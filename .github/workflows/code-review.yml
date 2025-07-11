@@ -3,6 +3,7 @@ name: AI Code Review
 on:
   pull_request:
     types: [opened, synchronize]
+  workflow_dispatch:
 
 permissions:
   pull-requests: write
@@ -18,13 +19,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check GitHub CLI Version
-        run: gh --version
-          
       - name: Create Context Packet
         id: context_packet
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_PAGER: ""
         run: |
           # Get the diff
           DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
@@ -55,6 +54,9 @@ jobs:
           echo "context<<EOF" >> $GITHUB_OUTPUT
           echo "${CONTEXT_PACKET}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: DEBUG - Show Context Packet
+        run: echo "${{ steps.context_packet.outputs.context }}"
 
       - name: Create Review Prompt
         id: create_prompt
