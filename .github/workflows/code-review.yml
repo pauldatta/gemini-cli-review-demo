@@ -32,14 +32,25 @@ jobs:
             echo "pr_number=${{ github.event.number }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Get PR Diff and Changed Files
-        id: get_files
+      - name: Get PR Diffs via Git
+        id: get_diffs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh pr diff ${{ steps.pr_number.outputs.pr_number }} > diff.txt
-          gh pr diff ${{ steps.pr_number.outputs.pr_number }} --name-only > files.txt
+          # Fetch the base and head of the PR to ensure the commits are available
+          gh pr view ${{ steps.pr_number.outputs.pr_number }} --json baseRefName,headRefName --jq '"refs/heads/" + .baseRefName, "refs/heads/" + .headRefName' | xargs git fetch origin
+
+          BASE_SHA=$(gh pr view ${{ steps.pr_number.outputs.pr_number }} --json baseRefOid --jq '.baseRefOid')
+          HEAD_SHA=$(gh pr view ${{ steps.pr_number.outputs.pr_number }} --json headRefOid --jq '.headRefOid')
+
+          git diff --patch-with-stat "${BASE_SHA}".."${HEAD_SHA}" > diff.txt
+          git diff --name-only "${BASE_SHA}".."${HEAD_SHA}" > files.txt
+
+          echo "--- diff.txt content ---"
+          cat diff.txt
+          echo "--- files.txt content ---"
+          cat files.txt
 
       - name: Build Context Packet
         id: context_packet
@@ -136,6 +147,7 @@ jobs:
       - name: Post Review Comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if ! grep -q "This looks great! No suggestions." review.md; then
             gh pr comment ${{ steps.pr_number.outputs.pr_number }} --body-file review.md
