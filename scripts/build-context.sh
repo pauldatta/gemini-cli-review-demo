@@ -1,51 +1,37 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # Exit if no PR number is provided
 if [ -z "$1" ]; then
-  echo "Error: Pull Request number is required."
+  echo "Error: Pull Request number is required." >&2
   exit 1
 fi
 
 PR_NUMBER=$1
+DEBUG_FLAG="${2:-}" # Default to empty string if not provided
 
-# Get the diff and changed files
+# Get the diff content into a variable.
 echo "Fetching diff for PR #${PR_NUMBER}..."
-gh pr diff "${PR_NUMBER}" > diff.txt
-gh pr diff "${PR_NUMBER}" --name-only > files.txt
+DIFF_CONTENT=$(gh pr diff "${PR_NUMBER}")
 
-echo "--- diff.txt content ---"
-cat diff.txt
-echo "--- files.txt content ---"
-cat files.txt
+# --- Debugging output ---
+if [[ "$DEBUG_FLAG" == "--debug" ]]; then
+  echo "--- diff content ---"
+  echo "${DIFF_CONTENT}"
+  echo "--------------------"
+fi
 
-# Start with the diff
-echo "## Pull Request Diff:" > context.txt
-echo '```diff' >> context.txt
-cat diff.txt >> context.txt
-echo '```' >> context.txt
-echo "" >> context.txt
-echo "## Full Content of Changed Files:" >> context.txt
-
-# Append each changed file's content
-while IFS= read -r file; do
-  if [ -f "$file" ]; then
-    echo "---" >> context.txt
-    echo "### File: \`${file}\`" >> context.txt
-    echo '```' >> context.txt
-    # Use git show to read the file from the index, avoiding filesystem issues
-    git show "HEAD:${file}" >> context.txt
-    echo '```' >> context.txt
-    echo "" >> context.txt
-  fi
-done < files.txt
-
-# Set the multiline output for the next step
-echo "--- context.txt content ---"
-cat context.txt
-
-{
-  echo 'context<<EOF'
-  cat context.txt
-  echo 'EOF'
-} >> "$GITHUB_OUTPUT"
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  {
+    echo 'context<<EOF'
+    echo "## Pull Request Diff:"
+    echo '```diff'
+    echo "${DIFF_CONTENT}"
+    echo '```'
+    echo 'EOF'
+  } >> "$GITHUB_OUTPUT"
+else
+  # If not in a GitHub Actions environment, print to stdout for local testing.
+  echo "--- GITHUB_OUTPUT is not set, printing to standard output ---"
+  echo "${DIFF_CONTENT}"
+fi

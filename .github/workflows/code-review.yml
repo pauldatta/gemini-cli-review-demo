@@ -39,16 +39,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: ./scripts/build-context.sh ${{ steps.pr_number.outputs.pr_number }}
 
-      - name: DEBUG - Show Context Packet
-        run: echo "${{ steps.context_packet.outputs.context }}"
-
       - name: Create Review Prompt
         id: create_prompt
         env:
           REVIEW_PROMPT: |
             You are an expert code reviewer. Your task is to provide a detailed review of this pull request.
 
-            **IMPORTANT:** You have been provided with a complete "context packet" that includes both the pull request diff and the full content of every changed file. Rely *only* on this context to perform your review.
+            **IMPORTANT:** You have been provided with the pull request diff. If you need more context, use your available tools (`cat`, `grep`, etc.) to read the full content of any file mentioned in the diff.
 
             **Review Guidelines:**
             - Focus on code quality, security, performance, and maintainability.
@@ -73,7 +70,7 @@ jobs:
 
             If you have no suggestions at all, respond with the single phrase: "This looks great! No suggestions."
 
-            Here is the context packet:
+            Here is the pull request diff:
         run: |
           echo "prompt<<EOF" >> $GITHUB_OUTPUT
           echo "${REVIEW_PROMPT}" >> $GITHUB_OUTPUT
