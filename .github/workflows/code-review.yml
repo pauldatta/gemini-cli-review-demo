@@ -32,55 +32,12 @@ jobs:
             echo "pr_number=${{ github.event.number }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Get PR Diffs via Git
-        id: get_diffs
+      - name: Build Context Packet
+        id: context_packet
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          # Fetch the base and head of the PR to ensure the commits are available
-          gh pr view ${{ steps.pr_number.outputs.pr_number }} --json baseRefName,headRefName --jq '"refs/heads/" + .baseRefName, "refs/heads/" + .headRefName' | xargs git fetch origin
-
-          BASE_SHA=$(gh pr view ${{ steps.pr_number.outputs.pr_number }} --json baseRefOid --jq '.baseRefOid')
-          HEAD_SHA=$(gh pr view ${{ steps.pr_number.outputs.pr_number }} --json headRefOid --jq '.headRefOid')
-
-          git diff --patch-with-stat "${BASE_SHA}".."${HEAD_SHA}" > diff.txt
-          git diff --name-only "${BASE_SHA}".."${HEAD_SHA}" > files.txt
-
-          echo "--- diff.txt content ---"
-          cat diff.txt
-          echo "--- files.txt content ---"
-          cat files.txt
-
-      - name: Build Context Packet
-        id: context_packet
-        run: |
-          # Start with the diff
-          echo "## Pull Request Diff:" > context.txt
-          echo '```diff' >> context.txt
-          cat diff.txt >> context.txt
-          echo '```' >> context.txt
-          echo "" >> context.txt
-          echo "## Full Content of Changed Files:" >> context.txt
-
-          # Append each changed file's content
-          while IFS= read -r file; do
-            if [ -f "$file" ]; then
-              echo "---" >> context.txt
-              echo "### File: `${file}`" >> context.txt
-              echo '```' >> context.txt
-              git show "HEAD:${file}" >> context.txt
-              echo '```' >> context.txt
-              echo "" >> context.txt
-            fi
-          done < files.txt
-
-          # Set the multiline output for the next step
-          {
-            echo 'context<<EOF'
-            cat context.txt
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+        run: ./scripts/build-context.sh ${{ steps.pr_number.outputs.pr_number }}
 
       - name: DEBUG - Show Context Packet
         run: echo "${{ steps.context_packet.outputs.context }}"
