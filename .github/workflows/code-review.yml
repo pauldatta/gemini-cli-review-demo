@@ -32,67 +32,12 @@ jobs:
             echo "pr_number=${{ github.event.number }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build Context Packet
-        id: context_packet
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: ./scripts/build-context.sh ${{ steps.pr_number.outputs.pr_number }}
-
-      - name: Create Review Prompt
-        id: create_prompt
-        env:
-          REVIEW_PROMPT: |
-            You are an expert code reviewer. Your task is to provide a detailed review of this pull request.
-
-            **IMPORTANT:** You have been provided with the pull request diff. If you need more context, use your available tools (`cat`, `grep`, etc.) to read the full content of any file mentioned in the diff.
-
-            **Review Guidelines:**
-            - Focus on code quality, security, performance, and maintainability.
-            - For this project, also consider the gameplay and user experience.
-            - Provide specific, constructive feedback.
-
-            **Output Format:**
-            Please structure your feedback using this exact markdown format. If you have no feedback for a section, omit it.
-
-            ---
-            ### 🎮 Gameplay & UX
-            *(Feedback on the user experience, game feel, and fun factor.)*
-
-            ### 💡 Suggestions
-            *(Specific suggestions for improvement, including code snippets if helpful.)*
-            - **File:** `path/to/file.js:line` - Your detailed suggestion.
-
-            ### ✨ Highlights
-            *(Point out things you liked about the PR!)*
-
-            ---
-
-            If you have no suggestions at all, respond with the single phrase: "This looks great! No suggestions."
-
-            Here is the pull request diff:
-        run: |
-          echo "prompt<<EOF" >> $GITHUB_OUTPUT
-          echo "${REVIEW_PROMPT}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Run Gemini CLI for Review
-        id: gemini_review
+      - name: Run Review Script
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          # Create the .gemini directory
-          mkdir -p .gemini
-
-          # Temporarily create the settings file to disable telemetry
-          echo '{
-            "telemetry": {"enabled": false}
-          }' > .gemini/settings.json
-
-          npm install -g @google/gemini-cli
-          
-          # Pipe the context and prompt to the gemini command
-          printf "%s\n\n%s" "${{ steps.create_prompt.outputs.prompt }}" "${{ steps.context_packet.outputs.context }}" | gemini > review.md
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/code-review.sh ${{ steps.pr_number.outputs.pr_number }}
 
       - name: Upload Review Artifact
         uses: actions/upload-artifact@v4
