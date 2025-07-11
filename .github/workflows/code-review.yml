@@ -32,37 +32,38 @@ jobs:
             echo "pr_number=${{ github.event.number }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create Context Packet
-        id: context_packet
+      - name: Get PR Diff and Changed Files
+        id: get_files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_PAGER: ""
+          GH_REPO: ${{ github.repository }}
         run: |
-          # Get the diff
-          DIFF=$(gh pr diff ${{ steps.pr_number.outputs.pr_number }})
+          gh pr diff ${{ steps.pr_number.outputs.pr_number }} > diff.txt
+          gh pr diff ${{ steps.pr_number.outputs.pr_number }} --name-only > files.txt
 
-          # Get the list of changed files
-          CHANGED_FILES=$(gh pr diff ${{ steps.pr_number.outputs.pr_number }} --name-only)
-
-          # Create the context packet
+      - name: Build Context Packet
+        id: context_packet
+        run: |
           CONTEXT_PACKET="
           ## Pull Request Diff:
           ```diff
-          ${DIFF}
+          $(cat diff.txt)
           ```
 
           ## Full Content of Changed Files:
           "
 
-          for file in ${CHANGED_FILES}; do
-            CONTEXT_PACKET="${CONTEXT_PACKET}
-            ---
-            ### File: ${file}
-            ```
-            $(cat ${file})
-            ```
-            "
-          done
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              CONTEXT_PACKET="${CONTEXT_PACKET}
+              ---
+              ### File: ${file}
+              ```
+              $(cat "${file}")
+              ```
+              "
+            fi
+          done < files.txt
 
           echo "context<<EOF" >> $GITHUB_OUTPUT
           echo "${CONTEXT_PACKET}" >> $GITHUB_OUTPUT
