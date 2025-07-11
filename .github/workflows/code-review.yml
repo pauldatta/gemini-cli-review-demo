@@ -55,30 +55,32 @@ jobs:
       - name: Build Context Packet
         id: context_packet
         run: |
-          CONTEXT_PACKET="
-          ## Pull Request Diff:
-          ```diff
-          $(cat diff.txt)
-          ```
+          # Start with the diff
+          echo "## Pull Request Diff:" > context.txt
+          echo '```diff' >> context.txt
+          cat diff.txt >> context.txt
+          echo '```' >> context.txt
+          echo "" >> context.txt
+          echo "## Full Content of Changed Files:" >> context.txt
 
-          ## Full Content of Changed Files:
-          "
-
+          # Append each changed file's content
           while IFS= read -r file; do
             if [ -f "$file" ]; then
-              CONTEXT_PACKET="${CONTEXT_PACKET}
-              ---
-              ### File: ${file}
-              ```
-              $(cat "${file}")
-              ```
-              "
+              echo "---" >> context.txt
+              echo "### File: `${file}`" >> context.txt
+              echo '```' >> context.txt
+              git show "HEAD:${file}" >> context.txt
+              echo '```' >> context.txt
+              echo "" >> context.txt
             fi
           done < files.txt
 
-          echo "context<<EOF" >> $GITHUB_OUTPUT
-          echo "${CONTEXT_PACKET}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Set the multiline output for the next step
+          {
+            echo 'context<<EOF'
+            cat context.txt
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: DEBUG - Show Context Packet
         run: echo "${{ steps.context_packet.outputs.context }}"
