@@ -37,7 +37,9 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: ./scripts/code-review.sh ${{ steps.pr_number.outputs.pr_number }}
+        run: |
+          npm install -g @google/gemini-cli
+          ./scripts/code-review.sh ${{ steps.pr_number.outputs.pr_number }}
 
       - name: Upload Review Artifact
         uses: actions/upload-artifact@v4
