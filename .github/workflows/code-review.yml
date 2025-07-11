@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize]
   workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: 'The number of the pull request to review'
+        required: true
 
 permissions:
   pull-requests: write
@@ -19,6 +23,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Determine PR Number
+        id: pr_number
+        run: |
+          if [ -n "${{ github.event.inputs.pull_request_number }}" ]; then
+            echo "pr_number=${{ github.event.inputs.pull_request_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Context Packet
         id: context_packet
         env:
@@ -26,10 +39,10 @@ jobs:
           GH_PAGER: ""
         run: |
           # Get the diff
-          DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
+          DIFF=$(gh pr diff ${{ steps.pr_number.outputs.pr_number }})
 
           # Get the list of changed files
-          CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only)
+          CHANGED_FILES=$(gh pr diff ${{ steps.pr_number.outputs.pr_number }} --name-only)
 
           # Create the context packet
           CONTEXT_PACKET="
@@ -124,5 +137,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! grep -q "This looks great! No suggestions." review.md; then
-            gh pr comment ${{ github.event.pull_request.number }} --body-file review.md
+            gh pr comment ${{ steps.pr_number.outputs.pr_number }} --body-file review.md
           fi
