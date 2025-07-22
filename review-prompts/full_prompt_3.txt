@@ -1,0 +1,1212 @@
+You are a senior engineer and a mentor. Your goal is to review this pull request in a way that not only improves the code but also helps the author grow as an engineer. Your tone should be constructive, collaborative, and educational.
+
+**Guiding Principles:**
+- **Explain the "Why":** Don't just say what to change; explain *why* it's better. Connect your feedback to principles of good software design, maintainability, and long-term code health.
+- **Ask Questions:** Instead of making demands, ask questions to prompt the author to think through the design choices. For example, "Have you considered how this might scale?" or "What are your thoughts on extracting this logic into a separate function?"
+- **Balance Praise and Criticism:** Start by acknowledging the effort and highlighting the positive aspects of the work. Then, gently introduce areas for improvement.
+
+**Context:**
+The provided context packet contains the PR diff and the full content of all changed files. Use this as your sole source of information.
+
+**Output Format:**
+Please provide your review in a conversational, easy-to-read format.
+
+### General Thoughts
+*(Start with some positive reinforcement and a high-level overview of the changes. Acknowledge the work done.)*
+
+### Areas for Discussion & Improvement
+*(Use this section to raise questions and provide detailed, constructive feedback. Group your points by theme if possible.)*
+
+- **On the overall design:** *(Your thoughts and questions about the design.)*
+- **On readability and clarity:** *(Suggestions for improving names, comments, or structure.)*
+- **On testing strategy:** *(Feedback on the tests and potential edge cases.)*
+
+### Learning Resources
+*(Optionally, if you can, suggest an article or documentation that might be helpful for the author.)*
+
+## Pull Request Diff:
+```diff
+diff --git a/index.html b/index.html
+index 5856845..8244a99 100644
+--- a/index.html
++++ b/index.html
+@@ -1,28 +1,49 @@
+ <!DOCTYPE html>
+ <html lang="en">
+ <head>
+-    <meta charset="UTF-8">
+-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-    <title>Gemini-CLI Issue Tracker</title>
+-    <link rel="stylesheet" href="style.css">
++  <meta charset="UTF-8">
++  <meta name="viewport" content="width=device-width, initial-scale=1.0">
++  <title>Gemini-CLI: Issue Triage</title>
++  <link rel="stylesheet" href="style.css">
+ </head>
+ <body>
+-    <div class="container">
+-        <h1>Gemini-CLI Issue Tracker</h1>
+-        <div class="issue-list-container">
+-            <ul id="issue-list"></ul>
+-        </div>
+-        <div class="sidebar">
+-            <h2>All Issues</h2>
+-            <ul id="all-issues-list"></ul>
+-            <a href="https://github.com/google-gemini/gemini-cli/issues" target="_blank" class="view-all-link">View all issues on GitHub</a>
+-        </div>
++  <div id="game-container">
++    <div id="score-board">
++      <div>Score: <span id="score">0</span></div>
++      <div>Lives: <span id="lives">3</span></div>
++    </div>
++    <div id="game-area">
++      <div id="countdown"></div>
++    </div>
++    <div id="bins-container"></div>
++    <div id="sidebar">
++      <h2>Upcoming Issues</h2>
++      <ul id="upcoming-issues"></ul>
++      <a href="https://github.com/google-gemini/gemini-cli/issues" target="_blank" class="view-all-link">View all issues on GitHub</a>
++    </div>
++  </div>
++
++  <div id="start-screen">
++    <div class="start-screen-content">
++      <h1>Welcome to Issue Triage!</h1>
++      <p>Drag and drop the falling issues into the correct bins to score points.</p>
++      <h2>Categories</h2>
++      <ul class="instructions-list">
++        <li><span class="dot bug"></span><strong>Bugs:</strong> Problems or errors in the code.</li>
++        <li><span class="dot enhancement"></span><strong>Features:</strong> New functionality or enhancements.</li>
++        <li><span class="dot documentation"></span><strong>Docs:</strong> Documentation-related tasks.</li>
++        <li><span class="dot good-first-issue"></span><strong>First Issues:</strong> Good for new contributors.</li>
++        <li><span class="dot other"></span><strong>Other:</strong> Anything else.</li>
++      </ul>
++      <button id="start-button">Start Game</button>
+     </div>
+-    <script src="script.js"></script>
++  </div>
++
++  <div id="end-screen" style="display: none;">
++    <p id="end-message"></p>
++    <button id="restart-button">Play Again</button>
++  </div>
++
++  <script src="script.js"></script>
+ </body>
+ </html>
+diff --git a/script.js b/script.js
+index 5c6a06a..137c42e 100644
+--- a/script.js
++++ b/script.js
+@@ -1,37 +1,258 @@
+-document.addEventListener('DOMContentLoaded', () => {
+-    const issueList = document.getElementById('issue-list');
+-    const allIssuesList = document.getElementById('all-issues-list');
+-    const issueCache = new Map();
+-
+-    async function fetchIssues() {
+-        try {
+-            const response = await fetch('https://api.github.com/repos/google-gemini/gemini-cli/issues?state=open');
+-            if (!response.ok) {
+-                throw new Error(`HTTP error! status: ${response.status}`);
+-            }
+-            const issues = await response.json();
+-            displayIssues(issues);
+-            displayAllIssues(issues);
+-        } catch (error) {
+-            console.error('Error fetching issues:', error);
+-            issueList.innerHTML = '<li>Error loading issues. Please try again later.</li>';
+-        }
++const GITHUB_REPO = 'google-gemini/gemini-cli';
++const ISSUE_CATEGORIES = {
++  'bug': 'Bugs',
++  'enhancement': 'Features',
++  'documentation': 'Docs',
++  'good first issue': 'First Issues',
++  'other': 'Other'
++};
++
++let score = 0;
++let lives = 3;
++let issueQueue = [];
++let activeIssues = new Set();
++let gameInterval;
++let spawnTimeout;
++
++const scoreEl = document.getElementById('score');
++const livesEl = document.getElementById('lives');
++const gameArea = document.getElementById('game-area');
++const binsContainer = document.getElementById('bins-container');
++const upcomingIssuesEl = document.getElementById('upcoming-issues');
++const startScreen = document.getElementById('start-screen');
++const endScreen = document.getElementById('end-screen');
++const startButton = document.getElementById('start-button');
++const restartButton = document.getElementById('restart-button');
++const countdownEl = document.getElementById('countdown');
++
++startButton.addEventListener('click', startGame);
++restartButton.addEventListener('click', () => location.reload());
++
++function createBins() {
++  for (const key in ISSUE_CATEGORIES) {
++    const bin = document.createElement('div');
++    bin.classList.add('bin', key);
++    bin.dataset.category = key;
++    bin.textContent = ISSUE_CATEGORIES[key];
++    binsContainer.appendChild(bin);
++
++    bin.addEventListener('dragover', e => e.preventDefault());
++    bin.addEventListener('drop', handleDrop);
++  }
++}
++
++async function startGame() {
++  startScreen.style.display = 'none';
++  countdownEl.style.display = 'block';
++
++  let count = 3;
++  countdownEl.textContent = count;
++  const countdownInterval = setInterval(() => {
++    count--;
++    if (count > 0) {
++      countdownEl.textContent = count;
++    } else {
++      clearInterval(countdownInterval);
++      countdownEl.style.display = 'none';
++      initializeGame();
+     }
+-
+-    function displayIssues(issues) {
+-        issueList.innerHTML = '';
+-        const openIssues = issues.filter(issue => issue.state === 'open');
+-        openIssues.forEach(issue => {
+-            const li = createIssueElement(issue);
+-            issueList.appendChild(li);
+-            issueCache.set(issue.id, issue);
+-        });
++  }, 1000);
++}
++
++async function initializeGame() {
++  score = 0;
++  lives = 3;
++  updateScoreboard();
++  await fetchIssues();
++  gameInterval = setInterval(updateGame, 16); // ~60fps
++  spawnIssue();
++}
++
++async function fetchIssues() {
++  try {
++    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/issues?state=open`);
++    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
++    let issues = await response.json();
++    issues = issues.filter(issue => !issue.pull_request); // Filter out PRs
++    issueQueue = issues.map(issue => ({
++      id: issue.id,
++      title: issue.title,
++      url: issue.html_url,
++      category: getIssueCategory(issue.labels)
++    }));
++    updateUpcomingIssues();
++  } catch (error) {
++    console.error('Error fetching issues:', error);
++    // Handle error in UI
++  }
++}
++
++function getIssueCategory(labels) {
++  const labelNames = labels.map(l => l.name.toLowerCase());
++  for (const category in ISSUE_CATEGORIES) {
++    if (labelNames.includes(category)) {
++      return category;
+     }
+-
+-    function displayAllIssues(issues) {
+-        allIssuesList.innerHTML = '';
+-        issues.forEach(issue => {
+-            const li = createIssueElement(issue);
+-            allIssuesList.appendChild(li);
+-        });
++  }
++  return 'other';
++}
++
++function spawnIssue() {
++  if (issueQueue.length === 0) return;
++
++  const issueData = issueQueue.shift();
++  const issueEl = document.createElement('div');
++  issueEl.classList.add('issue-card');
++  issueEl.dataset.id = issueData.id;
++  issueEl.dataset.category = issueData.category;
++  issueEl.draggable = true;
++  issueEl.innerHTML = `<strong>${issueData.title}</strong>`;
++  issueEl.style.setProperty('--category-color', `var(--${issueData.category}-color)`);
++
++  const laneWidth = gameArea.offsetWidth / 5;
++  const lane = Math.floor(Math.random() * 5);
++  issueEl.style.left = `${lane * laneWidth + (laneWidth - issueEl.offsetWidth) / 2}px`;
++  issueEl.style.top = '0px';
++
++  gameArea.appendChild(issueEl);
++  activeIssues.add(issueEl);
++
++  issueEl.addEventListener('dragstart', e => {
++    e.dataTransfer.setData('text/plain', issueEl.dataset.id);
++    setTimeout(() => issueEl.classList.add('dragging'), 0);
++  });
++
++  issueEl.addEventListener('dragend', () => issueEl.classList.remove('dragging'));
++
++  // Bonus clue
++  if (Math.random() < 0.2) { // 20% chance for a clue
++    const clue = document.createElement('div');
++    clue.classList.add('clue');
++    clue.textContent = `Hint: ${ISSUE_CATEGORIES[issueData.category]}`;
++    issueEl.appendChild(clue);
++    setTimeout(() => clue.style.opacity = '0', 2000);
++  }
++
++  updateUpcomingIssues();
++
++  const spawnDelay = 2000 + Math.random() * 2000;
++  spawnTimeout = setTimeout(spawnIssue, spawnDelay);
++}
++
++function updateGame() {
++  activeIssues.forEach(issueEl => {
++    const top = parseInt(issueEl.style.top);
++    issueEl.style.top = `${top + 2}px`;
++
++    if (top > gameArea.offsetHeight) {
++      loseLife();
++      issueEl.remove();
++      activeIssues.delete(issueEl);
++    }
++  });
++
++  if (lives <= 0) {
++    endGame(false);
++  } else if (issueQueue.length === 0 && activeIssues.size === 0) {
++    endGame(true);
++  }
++}
++
++function handleDrop(e) {
++  e.preventDefault();
++  const issueId = e.dataTransfer.getData('text/plain');
++  const droppedIssue = document.querySelector(`.issue-card[data-id='${issueId}']`);
++  const bin = e.target.closest('.bin');
++
++  if (droppedIssue && bin) {
++    const correctCategory = droppedIssue.dataset.category;
++    const droppedCategory = bin.dataset.category;
++
++    if (correctCategory === droppedCategory) {
++      score += 10;
++      // Add visual feedback for correct drop
++    } else {
++      score -= 5;
++      loseLife();
++      // Add visual feedback for incorrect drop
+     }
+-
+-    function createIssueElement(issue) {
+-        const li = document.createElement('li');
+-        li.className = 'issue-item';
+-        li.innerHTML = `
+-            <div class="issue-title">${issue.title}</div>
+-            <div class="issue-details">
+-                #${issue.number} opened by ${issue.user.login}
+-            </div>
+-        `;
+-        return li;
+-    }
+-
+-    fetchIssues();
+-});
++    droppedIssue.remove();
++    activeIssues.delete(droppedIssue);
++    updateScoreboard();
++  }
++}
++
++function loseLife() {
++  lives--;
++  updateScoreboard();
++  // Add visual feedback for losing a life
++}
++
++function updateScoreboard() {
++  scoreEl.textContent = score;
++  livesEl.textContent = '❤️'.repeat(lives);
++}
++
++function updateUpcomingIssues() {
++  upcomingIssuesEl.innerHTML = '';
++  const nextIssues = issueQueue.slice(0, 5);
++  nextIssues.forEach(issue => {
++    const li = document.createElement('li');
++    li.textContent = issue.title;
++    li.style.setProperty('--category-color', `var(--${issue.category}-color)`);
++    upcomingIssuesEl.appendChild(li);
++  });
++}
++
++function endGame(isWin) {
++  clearInterval(gameInterval);
++  clearTimeout(spawnTimeout);
++  activeIssues.forEach(issue => issue.remove());
++  activeIssues.clear();
++
++  const endMessage = document.getElementById('end-message');
++  if (isWin) {
++    endMessage.textContent = `You win! Final Score: ${score}`;
++  } else {
++    endMessage.textContent = `Game Over! Final Score: ${score}`;
++  }
++  endScreen.style.display = 'flex';
++}
++
++createBins();
+diff --git a/style.css b/style.css
+index 31a31e9..05f595a 100644
+--- a/style.css
++++ b/style.css
+@@ -1,40 +1,181 @@
+-:root {
+-    --background-color: #f0f2f5;
+-    --primary-color: #ffffff;
+-    --secondary-color: #606770;
+-    --accent-color: #1877f2;
+-    --border-color: #dddfe2;
+-    --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
++body {
++  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
++  margin: 0;
++  background: #1a1a1a;
++  color: #f0f0f0;
++  overflow: hidden;
++  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
++  background-size: 400% 400%;
++  animation: gradientBG 15s ease infinite;
+ }
+ 
+-body {
+-    font-family: var(--font-family);
+-    background-color: var(--background-color);
+-    margin: 0;
+-    padding: 20px;
++@keyframes gradientBG {
++  0% { background-position: 0% 50%; }
++  50% { background-position: 100% 50%; }
++  100% { background-position: 0% 50%; }
+ }
+ 
+-.container {
+-    display: flex;
+-    max-width: 1200px;
+-    margin: 0 auto;
+-    background-color: var(--primary-color);
+-    border-radius: 8px;
+-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+-    overflow: hidden;
++:root {
++  --bg-color: #1a1a1a;
++  --primary-text: #f0f0f0;
++  --secondary-text: #a0a0a0;
++  --border-color: #444;
++  --bug-color: #ff6b6b;
++  --enhancement-color: #4d96ff;
++  --documentation-color: #feca57;
++  --good-first-issue-color: #48dbfb;
++  --other-color: #9e9e9e;
+ }
+ 
+-.issue-list-container {
+-    flex-grow: 1;
+-    padding: 20px;
+-    border-right: 1px solid var(--border-color);
++#game-container {
++  display: grid;
++  grid-template-areas:
++    "score-board game-area sidebar"
++    "bins-container bins-container bins-container";
++  grid-template-columns: 200px 1fr 250px;
++  grid-template-rows: 1fr auto;
++  height: 100vh;
++  gap: 10px;
++  padding: 10px;
++  box-sizing: border-box;
+ }
+ 
+-h1 {
+-    font-size: 24px;
+-    color: var(--accent-color);
+-    margin: 20px;
+-    text-align: center;
++#score-board {
++  grid-area: score-board;
++  background: rgba(0, 0, 0, 0.3);
++  padding: 20px;
++  border-radius: 8px;
++  text-align: center;
++  font-size: 1.5em;
+ }
+ 
+-.issue-list, .all-issues-list {
+-    list-style-type: none;
+-    padding: 0;
+-    margin: 0;
++#game-area {
++  grid-area: game-area;
++  position: relative;
++  background: rgba(0, 0, 0, 0.2);
++  border-radius: 8px;
++  overflow: hidden;
+ }
+ 
+-.issue-item {
+-    padding: 15px;
+-    border-bottom: 1px solid var(--border-color);
+-    cursor: pointer;
+-    transition: background-color 0.2s;
++#bins-container {
++  grid-area: bins-container;
++  display: flex;
++  justify-content: space-around;
++  padding: 10px;
++  background: rgba(0, 0, 0, 0.3);
++  border-radius: 8px;
+ }
+ 
+-.issue-item:last-child {
+-    border-bottom: none;
++.bin {
++  width: 18%;
++  padding: 20px 10px;
++  text-align: center;
++  border: 2px dashed var(--border-color);
++  border-radius: 8px;
++  transition: background-color 0.3s, transform 0.2s;
++  font-weight: bold;
+ }
+ 
+-.issue-item:hover {
+-    background-color: #f5f5f5;
++.bin:hover {
++  background-color: rgba(255, 255, 255, 0.1);
++  transform: scale(1.05);
+ }
+ 
+-.issue-title {
+-    font-weight: 600;
+-    color: #050505;
++.bin.bug { border-color: var(--bug-color); box-shadow: 0 0 10px var(--bug-color); }
++.bin.enhancement { border-color: var(--enhancement-color); box-shadow: 0 0 10px var(--enhancement-color); }
++.bin.documentation { border-color: var(--documentation-color); box-shadow: 0 0 10px var(--documentation-color); }
++.bin.good-first-issue { border-color: var(--good-first-issue-color); box-shadow: 0 0 10px var(--good-first-issue-color); }
++.bin.other { border-color: var(--other-color); box-shadow: 0 0 10px var(--other-color); }
++
++.issue-card {
++  position: absolute;
++  background: rgba(255, 255, 255, 0.9);
++  color: #333;
++  padding: 10px;
++  border-radius: 5px;
++  cursor: grab;
++  width: 150px;
++  text-align: center;
++  border-left: 5px solid;
++  border-color: var(--category-color);
++  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+ }
+ 
+-.issue-details {
+-    font-size: 12px;
+-    color: var(--secondary-color);
+-    margin-top: 5px;
++.issue-card.dragging {
++  opacity: 0.5;
++  cursor: grabbing;
+ }
+ 
+-.sidebar {
+-    width: 300px;
+-    padding: 20px;
+-    background-color: #f7f7f7;
++.clue {
++  position: absolute;
++  bottom: -25px;
++  left: 50%;
++  transform: translateX(-50%);
++  background: #333;
++  color: white;
++  padding: 5px 10px;
++  border-radius: 3px;
++  font-size: 0.8em;
++  opacity: 1;
++  transition: opacity 1s ease-out;
+ }
+ 
+-h2 {
+-    font-size: 20px;
+-    color: #333;
+-    margin-top: 0;
+-    margin-bottom: 15px;
++#sidebar {
++  grid-area: sidebar;
++  background: rgba(0, 0, 0, 0.3);
++  padding: 20px;
++  border-radius: 8px;
+ }
+ 
+-.view-all-link {
+-    display: block;
+-    margin-top: 20px;
+-    text-align: center;
+-    color: var(--accent-color);
+-    text-decoration: none;
+-    font-weight: 600;
++#upcoming-issues {
++  list-style: none;
++  padding: 0;
++  margin: 0;
+ }
+ 
+-.view-all-link:hover {
+-    text-decoration: underline;
++#upcoming-issues li {
++  background: rgba(0, 0, 0, 0.2);
++  padding: 8px;
++  margin-bottom: 5px;
++  border-radius: 4px;
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  border-left: 3px solid;
++  border-color: var(--category-color);
+ }
++
++#start-screen, #end-screen {
++  position: fixed;
++  top: 0;
++  left: 0;
++  width: 100%;
++  height: 100%;
++  background: rgba(0, 0, 0, 0.8);
++  display: flex;
++  justify-content: center;
++  align-items: center;
++  text-align: center;
++  flex-direction: column;
++  z-index: 100;
++}
++
++.start-screen-content {
++  background: #2a2a2a;
++  padding: 40px;
++  border-radius: 10px;
++  max-width: 600px;
++}
++
++.instructions-list {
++  list-style: none;
++  padding: 0;
++  text-align: left;
++  display: inline-block;
++  margin-top: 20px;
++}
++
++.instructions-list li {
++  margin-bottom: 10px;
++}
++
++.dot {
++  height: 15px;
++  width: 15px;
++  border-radius: 50%;
++  display: inline-block;
++  margin-right: 10px;
++  vertical-align: middle;
++}
++
++.dot.bug { background-color: var(--bug-color); }
++.dot.enhancement { background-color: var(--enhancement-color); }
++.dot.documentation { background-color: var(--documentation-color); }
++.dot.good-first-issue { background-color: var(--good-first-issue-color); }
++.dot.other { background-color: var(--other-color); }
++
++#start-button, #restart-button {
++  margin-top: 20px;
++  padding: 15px 30px;
++  font-size: 1.2em;
++  cursor: pointer;
++  border: none;
++  border-radius: 5px;
++  background-color: var(--enhancement-color);
++  color: white;
++  transition: background-color 0.3s;
++}
++
++#start-button:hover, #restart-button:hover {
++  background-color: #45a0f5;
++}
++
++#countdown {
++  position: absolute;
++  top: 50%;
++  left: 50%;
++  transform: translate(-50%, -50%);
++  font-size: 10em;
++  font-weight: bold;
++  display: none;
++  animation: countdown-zoom 1s ease-in-out infinite;
++}
++
++@keyframes countdown-zoom {
++  from { transform: translate(-50%, -50%) scale(1); opacity: 1; }
++  to { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
++}
+
+## Full Content of Changed Files:
+
+---
+### File: `index.html`
+```
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini-CLI: Issue Triage</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <div id="score-board">
+      <div>Score: <span id="score">0</span></div>
+      <div>Lives: <span id="lives">3</span></div>
+    </div>
+    <div id="game-area">
+      <div id="countdown"></div>
+    </div>
+    <div id="bins-container"></div>
+    <div id="sidebar">
+      <h2>Upcoming Issues</h2>
+      <ul id="upcoming-issues"></ul>
+      <a href="https://github.com/google-gemini/gemini-cli/issues" target="_blank" class="view-all-link">View all issues on GitHub</a>
+    </div>
+  </div>
+
+  <div id="start-screen">
+    <div class="start-screen-content">
+      <h1>Welcome to Issue Triage!</h1>
+      <p>Drag and drop the falling issues into the correct bins to score points.</p>
+      <h2>Categories</h2>
+      <ul class="instructions-list">
+        <li><span class="dot bug"></span><strong>Bugs:</strong> Problems or errors in the code.</li>
+        <li><span class="dot enhancement"></span><strong>Features:</strong> New functionality or enhancements.</li>
+        <li><span class="dot documentation"></span><strong>Docs:</strong> Documentation-related tasks.</li>
+        <li><span class="dot good-first-issue"></span><strong>First Issues:</strong> Good for new contributors.</li>
+        <li><span class="dot other"></span><strong>Other:</strong> Anything else.</li>
+      </ul>
+      <button id="start-button">Start Game</button>
+    </div>
+  </div>
+
+  <div id="end-screen" style="display: none;">
+    <p id="end-message"></p>
+    <button id="restart-button">Play Again</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
+```
+
+---
+### File: `script.js`
+```
+const GITHUB_REPO = 'google-gemini/gemini-cli';
+const ISSUE_CATEGORIES = {
+  'bug': 'Bugs',
+  'enhancement': 'Features',
+  'documentation': 'Docs',
+  'good first issue': 'First Issues',
+  'other': 'Other'
+};
+
+let score = 0;
+let lives = 3;
+let issueQueue = [];
+let activeIssues = new Set();
+let gameInterval;
+let spawnTimeout;
+
+const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
+const gameArea = document.getElementById('game-area');
+const binsContainer = document.getElementById('bins-container');
+const upcomingIssuesEl = document.getElementById('upcoming-issues');
+const startScreen = document.getElementById('start-screen');
+const endScreen = document.getElementById('end-screen');
+const startButton = document.getElementById('start-button');
+const restartButton = document.getElementById('restart-button');
+const countdownEl = document.getElementById('countdown');
+
+startButton.addEventListener('click', startGame);
+restartButton.addEventListener('click', () => location.reload());
+
+function createBins() {
+  for (const key in ISSUE_CATEGORIES) {
+    const bin = document.createElement('div');
+    bin.classList.add('bin', key);
+    bin.dataset.category = key;
+    bin.textContent = ISSUE_CATEGORIES[key];
+    binsContainer.appendChild(bin);
+
+    bin.addEventListener('dragover', e => e.preventDefault());
+    bin.addEventListener('drop', handleDrop);
+  }
+}
+
+async function startGame() {
+  startScreen.style.display = 'none';
+  countdownEl.style.display = 'block';
+
+  let count = 3;
+  countdownEl.textContent = count;
+  const countdownInterval = setInterval(() => {
+    count--;
+    if (count > 0) {
+      countdownEl.textContent = count;
+    } else {
+      clearInterval(countdownInterval);
+      countdownEl.style.display = 'none';
+      initializeGame();
+    }
+  }, 1000);
+}
+
+async function initializeGame() {
+  score = 0;
+  lives = 3;
+  updateScoreboard();
+  await fetchIssues();
+  gameInterval = setInterval(updateGame, 16); // ~60fps
+  spawnIssue();
+}
+
+async function fetchIssues() {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/issues?state=open`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    let issues = await response.json();
+    issues = issues.filter(issue => !issue.pull_request); // Filter out PRs
+    issueQueue = issues.map(issue => ({
+      id: issue.id,
+      title: issue.title,
+      url: issue.html_url,
+      category: getIssueCategory(issue.labels)
+    }));
+    updateUpcomingIssues();
+  } catch (error) {
+    console.error('Error fetching issues:', error);
+    // Handle error in UI
+  }
+}
+
+function getIssueCategory(labels) {
+  const labelNames = labels.map(l => l.name.toLowerCase());
+  for (const category in ISSUE_CATEGORIES) {
+    if (labelNames.includes(category)) {
+      return category;
+    }
+  }
+  return 'other';
+}
+
+function spawnIssue() {
+  if (issueQueue.length === 0) return;
+
+  const issueData = issueQueue.shift();
+  const issueEl = document.createElement('div');
+  issueEl.classList.add('issue-card');
+  issueEl.dataset.id = issueData.id;
+  issueEl.dataset.category = issueData.category;
+  issueEl.draggable = true;
+  issueEl.innerHTML = `<strong>${issueData.title}</strong>`;
+  issueEl.style.setProperty('--category-color', `var(--${issueData.category}-color)`);
+
+  const laneWidth = gameArea.offsetWidth / 5;
+  const lane = Math.floor(Math.random() * 5);
+  issueEl.style.left = `${lane * laneWidth + (laneWidth - issueEl.offsetWidth) / 2}px`;
+  issueEl.style.top = '0px';
+
+  gameArea.appendChild(issueEl);
+  activeIssues.add(issueEl);
+
+  issueEl.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', issueEl.dataset.id);
+    setTimeout(() => issueEl.classList.add('dragging'), 0);
+  });
+
+  issueEl.addEventListener('dragend', () => issueEl.classList.remove('dragging'));
+
+  // Bonus clue
+  if (Math.random() < 0.2) { // 20% chance for a clue
+    const clue = document.createElement('div');
+    clue.classList.add('clue');
+    clue.textContent = `Hint: ${ISSUE_CATEGORIES[issueData.category]}`;
+    issueEl.appendChild(clue);
+    setTimeout(() => clue.style.opacity = '0', 2000);
+  }
+
+  updateUpcomingIssues();
+
+  const spawnDelay = 2000 + Math.random() * 2000;
+  spawnTimeout = setTimeout(spawnIssue, spawnDelay);
+}
+
+function updateGame() {
+  activeIssues.forEach(issueEl => {
+    const top = parseInt(issueEl.style.top);
+    issueEl.style.top = `${top + 2}px`;
+
+    if (top > gameArea.offsetHeight) {
+      loseLife();
+      issueEl.remove();
+      activeIssues.delete(issueEl);
+    }
+  });
+
+  if (lives <= 0) {
+    endGame(false);
+  } else if (issueQueue.length === 0 && activeIssues.size === 0) {
+    endGame(true);
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const issueId = e.dataTransfer.getData('text/plain');
+  const droppedIssue = document.querySelector(`.issue-card[data-id='${issueId}']`);
+  const bin = e.target.closest('.bin');
+
+  if (droppedIssue && bin) {
+    const correctCategory = droppedIssue.dataset.category;
+    const droppedCategory = bin.dataset.category;
+
+    if (correctCategory === droppedCategory) {
+      score += 10;
+      // Add visual feedback for correct drop
+    } else {
+      score -= 5;
+      loseLife();
+      // Add visual feedback for incorrect drop
+    }
+    droppedIssue.remove();
+    activeIssues.delete(droppedIssue);
+    updateScoreboard();
+  }
+}
+
+function loseLife() {
+  lives--;
+  updateScoreboard();
+  // Add visual feedback for losing a life
+}
+
+function updateScoreboard() {
+  scoreEl.textContent = score;
+  livesEl.textContent = '❤️'.repeat(lives);
+}
+
+function updateUpcomingIssues() {
+  upcomingIssuesEl.innerHTML = '';
+  const nextIssues = issueQueue.slice(0, 5);
+  nextIssues.forEach(issue => {
+    const li = document.createElement('li');
+    li.textContent = issue.title;
+    li.style.setProperty('--category-color', `var(--${issue.category}-color)`);
+    upcomingIssuesEl.appendChild(li);
+  });
+}
+
+function endGame(isWin) {
+  clearInterval(gameInterval);
+  clearTimeout(spawnTimeout);
+  activeIssues.forEach(issue => issue.remove());
+  activeIssues.clear();
+
+  const endMessage = document.getElementById('end-message');
+  if (isWin) {
+    endMessage.textContent = `You win! Final Score: ${score}`;
+  } else {
+    endMessage.textContent = `Game Over! Final Score: ${score}`;
+  }
+  endScreen.style.display = 'flex';
+}
+
+createBins();
+```
+
+---
+### File: `style.css`
+```
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  background: #1a1a1a;
+  color: #f0f0f0;
+  overflow: hidden;
+  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+  background-size: 400% 400%;
+  animation: gradientBG 15s ease infinite;
+}
+
+@keyframes gradientBG {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+:root {
+  --bg-color: #1a1a1a;
+  --primary-text: #f0f0f0;
+  --secondary-text: #a0a0a0;
+  --border-color: #444;
+  --bug-color: #ff6b6b;
+  --enhancement-color: #4d96ff;
+  --documentation-color: #feca57;
+  --good-first-issue-color: #48dbfb;
+  --other-color: #9e9e9e;
+}
+
+#game-container {
+  display: grid;
+  grid-template-areas:
+    "score-board game-area sidebar"
+    "bins-container bins-container bins-container";
+  grid-template-columns: 200px 1fr 250px;
+  grid-template-rows: 1fr auto;
+  height: 100vh;
+  gap: 10px;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+#score-board {
+  grid-area: score-board;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 1.5em;
+}
+
+#game-area {
+  grid-area: game-area;
+  position: relative;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#bins-container {
+  grid-area: bins-container;
+  display: flex;
+  justify-content: space-around;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.bin {
+  width: 18%;
+  padding: 20px 10px;
+  text-align: center;
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  transition: background-color 0.3s, transform 0.2s;
+  font-weight: bold;
+}
+
+.bin:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  transform: scale(1.05);
+}
+
+.bin.bug { border-color: var(--bug-color); box-shadow: 0 0 10px var(--bug-color); }
+.bin.enhancement { border-color: var(--enhancement-color); box-shadow: 0 0 10px var(--enhancement-color); }
+.bin.documentation { border-color: var(--documentation-color); box-shadow: 0 0 10px var(--documentation-color); }
+.bin.good-first-issue { border-color: var(--good-first-issue-color); box-shadow: 0 0 10px var(--good-first-issue-color); }
+.bin.other { border-color: var(--other-color); box-shadow: 0 0 10px var(--other-color); }
+
+.issue-card {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+  padding: 10px;
+  border-radius: 5px;
+  cursor: grab;
+  width: 150px;
+  text-align: center;
+  border-left: 5px solid;
+  border-color: var(--category-color);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.issue-card.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.clue {
+  position: absolute;
+  bottom: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  opacity: 1;
+  transition: opacity 1s ease-out;
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+#sidebar {
+  grid-area: sidebar;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 20px;
+  border-radius: 8px;
+}
+
+h2 {
+  font-size: 20px;
+  color: #f0f0f0;
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+#upcoming-issues {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#upcoming-issues li {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px;
+  margin-bottom: 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 3px solid;
+  border-color: var(--category-color);
+}
+
+.view-all-link {
+  display: block;
+  margin-top: 20px;
+  text-align: center;
+  color: #48dbfb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.view-all-link:hover {
+  text-decoration: underline;
+}
+
+#start-screen, #end-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.start-screen-content {
+  background: #2a2a2a;
+  padding: 40px;
+  border-radius: 10px;
+  max-width: 600px;
+}
+
+.instructions-list {
+  list-style: none;
+  padding: 0;
+  text-align: left;
+  display: inline-block;
+  margin-top: 20px;
+}
+
+.instructions-list li {
+  margin-bottom: 10px;
+}
+
+.dot {
+  height: 15px;
+  width: 15px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+
+.dot.bug { background-color: var(--bug-color); }
+.dot.enhancement { background-color: var(--enhancement-color); }
+.dot.documentation { background-color: var(--documentation-color); }
+.dot.good-first-issue { background-color: var(--good-first-issue-color); }
+.dot.other { background-color: var(--other-color); }
+
+#start-button, #restart-button {
+  margin-top: 20px;
+  padding: 15px 30px;
+  font-size: 1.2em;
+  cursor: pointer;
+  border: none;
+  border-radius: 5px;
+  background-color: var(--enhancement-color);
+  color: white;
+  transition: background-color 0.3s;
+}
+
+#start-button:hover, #restart-button:hover {
+  background-color: #45a0f5;
+}
+
+#countdown {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10em;
+  font-weight: bold;
+  display: none;
+  animation: countdown-zoom 1s ease-in-out infinite;
+}
+
+@keyframes countdown-zoom {
+  from { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  to { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+}
+```
